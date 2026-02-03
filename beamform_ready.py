@@ -93,11 +93,11 @@ def calibrate_and_save(x1_raw, x2_raw, fs_hz, fc_hz, cal_path, capture_dir=None)
     theta = estimate_const_phase(x1, x2a)
 
     cal = {
-        "lag_samples": lag,
-        "cfo_hz": cfo,
-        "phase_rad": theta,
-        "fc_hz": fc_hz,
-        "fs_hz": fs_hz,
+        "lag_samples": int(lag),
+        "cfo_hz": float(cfo),
+        "phase_rad": float(theta),
+        "fc_hz": float(fc_hz),
+        "fs_hz": float(fs_hz),
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
     if capture_dir is not None:

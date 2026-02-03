@@ -23,7 +23,8 @@ def capture_two_rtls(out_dir="captures/run001",
         s.sample_rate = fs_hz
         s.center_freq = fc_hz
         s.gain = gain_db
-        s.freq_correction = ppm
+        if ppm:
+            s.freq_correction = ppm
         sdrs.append(s)
 
     barrier = threading.Barrier(3)  # 2 worker threads + main
@@ -76,3 +77,6 @@ def capture_two_rtls(out_dir="captures/run001",
     }
     (out_dir / "meta.txt").write_text(str(meta))
     print("Done:", meta)
+
+if __name__ == "__main__":
+    capture_two_rtls()

@@ -65,8 +65,23 @@ The integer delay and phase offset are non-deterministic at each USB/PLL startup
 ## File Descriptions
 
 - `two-rtl-IQ-capture.py` - Main script: device enumeration, simultaneous IQ capture, and processing
+- `two-captures-chatGPT.py` - Alternate capture script: dynamic serial enumeration, threaded async capture with barrier synchronization, saves raw `.c64` IQ files and `meta.txt`
 - `beamform_ready.py` - Calibration and correction library: offset estimation (integer delay, CFO, phase), JSON cal save/load, and apply-only correction path
 - `verify-sync.py` - Runs full calibration pipeline on a capture directory, saves `cal.json`, loads it back, applies corrections, and plots before/after verification
+
+## Known Issues and Fixes Applied
+
+- **`[R82XX] PLL not locked!`**: Appears on capture startup with the external SI5351 clock. Can be ignored — captures and calibration are verified valid (tone visible in spectrum).
+- **`freq_correction = 0` crashes**: The RTL-SDR driver rejects `set_freq_correction(0)` with `LIBUSB_ERROR_INVALID_PARAM`. Fixed by only setting `freq_correction` when ppm is non-zero.
+- **numpy types not JSON-serializable**: `calibrate_and_save()` produced numpy `float32`/`int64` values that `json.dump` rejected. Fixed by casting `lag`, `cfo`, `phase`, `fc_hz`, `fs_hz` to native Python `int`/`float` in `beamform_ready.py`.
+- **USB buffer exhaustion with two SDRs**: Two simultaneous async readers exceed the default `usbfs_memory_mb` limit. Fix: `sudo sh -c 'echo 0 > /sys/module/usbcore/parameters/usbfs_memory_mb'`
+
+## Validated Calibration Results (868.1 MHz, 2.4 MSPS)
+
+- HackRF transmitting CW at 868.0 MHz confirmed via spectrum plot (tone at -0.1 MHz from 868.1 MHz center)
+- Integer delay: ~2113 samples (~0.88 ms) — typical USB scheduling jitter
+- CFO: ~0.005 Hz — effectively zero, confirming shared clock coherence
+- Phase offset: ~0.04 rad (~2.4 deg) — arbitrary PLL lock phase, as expected
 
 ## Development Notes
 

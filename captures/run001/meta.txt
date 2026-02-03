@@ -1,0 +1,1 @@
+{'fc_hz': 868100000, 'fs_hz_requested': 2400000, 'gain_db': 30.0, 'ppm': 0, 'device_indices': [1, 0], 'duration_s': 5.0}
