@@ -1,3 +1,6 @@
+import json
+from datetime import datetime, timezone
+
 import numpy as np
 from scipy.signal import fftconvolve
 
@@ -70,3 +73,61 @@ def prep_two_channel_for_beamforming(x1, x2, fs_hz, do_cfo=True):
     x2b = correct_const_phase(x2a, theta)
 
     return x1, x2b, {"lag_samples": lag, "cfo_hz": cfo, "phase_rad": theta}
+
+
+def calibrate_and_save(x1_raw, x2_raw, fs_hz, fc_hz, cal_path, capture_dir=None):
+    """Estimate calibration offsets and save to JSON. Does not apply corrections."""
+    x1 = normalize_rms(remove_dc(x1_raw))
+    x2 = normalize_rms(remove_dc(x2_raw))
+    n = min(len(x1), len(x2))
+    x1, x2 = x1[:n], x2[:n]
+
+    lag = estimate_integer_delay(x1, x2)
+    x2a = apply_integer_delay(x2, lag)
+    n = min(len(x1), len(x2a))
+    x1, x2a = x1[:n], x2a[:n]
+
+    cfo = estimate_cfo_hz(x1, x2a, fs_hz)
+    x2a = correct_cfo(x2a, cfo, fs_hz)
+
+    theta = estimate_const_phase(x1, x2a)
+
+    cal = {
+        "lag_samples": lag,
+        "cfo_hz": cfo,
+        "phase_rad": theta,
+        "fc_hz": fc_hz,
+        "fs_hz": fs_hz,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+    if capture_dir is not None:
+        cal["capture_dir"] = str(capture_dir)
+
+    with open(cal_path, "w") as f:
+        json.dump(cal, f, indent=2)
+
+    return cal
+
+
+def load_calibration(cal_path):
+    """Load calibration dict from JSON."""
+    with open(cal_path) as f:
+        return json.load(f)
+
+
+def apply_calibration(x1_raw, x2_raw, cal, fs_hz):
+    """Apply pre-computed calibration offsets. No estimation performed."""
+    x1 = normalize_rms(remove_dc(x1_raw))
+    x2 = normalize_rms(remove_dc(x2_raw))
+    n = min(len(x1), len(x2))
+    x1, x2 = x1[:n], x2[:n]
+
+    x2 = apply_integer_delay(x2, cal["lag_samples"])
+    n = min(len(x1), len(x2))
+    x1, x2 = x1[:n], x2[:n]
+
+    if cal["cfo_hz"] != 0:
+        x2 = correct_cfo(x2, cal["cfo_hz"], fs_hz)
+    x2 = correct_const_phase(x2, cal["phase_rad"])
+
+    return x1, x2

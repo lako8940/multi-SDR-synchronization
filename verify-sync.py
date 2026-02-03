@@ -11,10 +11,7 @@ from scipy.signal import fftconvolve
 
 from beamform_ready import (
     load_c64, remove_dc, normalize_rms,
-    estimate_integer_delay, apply_integer_delay,
-    estimate_cfo_hz, correct_cfo,
-    estimate_const_phase, correct_const_phase,
-    prep_two_channel_for_beamforming,
+    calibrate_and_save, load_calibration, apply_calibration,
 )
 
 # ── Load capture ─────────────────────────────────────────────────
@@ -46,8 +43,10 @@ n_pre = min(len(x1_raw), len(x2_raw))
 x1_pre = normalize_rms(remove_dc(x1_raw[:n_pre]))
 x2_pre = normalize_rms(remove_dc(x2_raw[:n_pre]))
 
-# ── Run calibration pipeline ─────────────────────────────────────
-x1, x2, cal = prep_two_channel_for_beamforming(x1_raw, x2_raw, fs_hz)
+# ── Run calibration and save to JSON ─────────────────────────────
+cal_path = capture_dir / "cal.json"
+cal = calibrate_and_save(x1_raw, x2_raw, fs_hz, fc_hz, cal_path, capture_dir)
+print(f"\nCalibration saved to {cal_path}")
 
 print("\n── Calibration Results ─────────────────────")
 print(f"Integer delay : {cal['lag_samples']:+d} samples  "
@@ -55,6 +54,10 @@ print(f"Integer delay : {cal['lag_samples']:+d} samples  "
 print(f"CFO           : {cal['cfo_hz']:+.4f} Hz")
 print(f"Phase offset  : {cal['phase_rad']:+.4f} rad  "
       f"({np.degrees(cal['phase_rad']):+.2f} deg)")
+
+# ── Load calibration back from JSON and apply ────────────────────
+cal = load_calibration(cal_path)
+x1, x2 = apply_calibration(x1_raw, x2_raw, cal, fs_hz)
 
 # ── Verification plots ───────────────────────────────────────────
 fig, axes = plt.subplots(3, 1, figsize=(12, 9))
