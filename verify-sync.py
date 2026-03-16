@@ -27,21 +27,11 @@ meta = ast.literal_eval((capture_dir / "meta.txt").read_text())
 fs_hz = meta["fs_hz_requested"]
 fc_hz = meta["fc_hz"]
 
-print(f"Capture dir : {capture_dir}")
-print(f"Center freq : {fc_hz/1e6:.3f} MHz")
-print(f"Sample rate : {fs_hz/1e6:.3f} MSPS")
-print(f"CH0 file    : {ch0_files[0].name}")
-print(f"CH1 file    : {ch1_files[0].name}")
-
 x1_raw = load_c64(ch0_files[0])
 x2_raw = load_c64(ch1_files[0])
-print(f"CH0 samples : {len(x1_raw):,}")
-print(f"CH1 samples : {len(x2_raw):,}")
 
 rms0_db = 10 * np.log10(np.mean(np.abs(x1_raw)**2))
 rms1_db = 10 * np.log10(np.mean(np.abs(x2_raw)**2))
-print(f"CH0 RMS     : {rms0_db:.1f} dBFS")
-print(f"CH1 RMS     : {rms1_db:.1f} dBFS")
 
 # ── Pre-correction baseline ───────────────────────────────────────
 n_pre = min(len(x1_raw), len(x2_raw))
@@ -51,7 +41,6 @@ x2_pre = normalize_rms(remove_dc(x2_raw[:n_pre]))
 # ── Run calibration and save to JSON ─────────────────────────────
 cal_path = capture_dir / "cal.json"
 cal = calibrate_and_save(x1_raw, x2_raw, fs_hz, fc_hz, cal_path, capture_dir)
-print(f"\nCalibration saved to {cal_path}")
 print("\n── Calibration Results ─────────────────────")
 print(f"Integer delay : {cal['lag_samples']:+d} samples  ({cal['lag_samples']/fs_hz*1e6:+.2f} us)")
 print(f"CFO           : {cal['cfo_hz']:+.4f} Hz")
