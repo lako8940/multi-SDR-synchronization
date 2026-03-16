@@ -87,14 +87,23 @@ def calibrate_and_save(x1_raw, x2_raw, fs_hz, fc_hz, cal_path, capture_dir=None)
     n = min(len(x1), len(x2a))
     x1, x2a = x1[:n], x2a[:n]
 
-    cfo = estimate_cfo_hz(x1, x2a, fs_hz)
-    x2a = correct_cfo(x2a, cfo, fs_hz)
+    # Shared SI5351 clock → true CFO is ~0 Hz. Estimating CFO from a low-SNR
+    # chirp produces a noise-dominated value (polyfit on unwrapped phase fails when
+    # per-sample phase noise > 90°), which destroys phase alignment when applied.
+    cfo = 0.0
 
-    theta = estimate_const_phase(x1, x2a)
+    # Estimate phase from a short window (4 ms) starting just past the zero-padded
+    # boundary. A long window gets sinc-suppressed by the chirp beat (fractional lag
+    # creates a slowly oscillating phase difference that cancels in the mean).
+    # At 4 ms the beat rotates < 0.1 rad → suppression < 0.2%.
+    est_start = abs(lag) + 200
+    est_n = min(int(0.004 * fs_hz), n - est_start)
+    theta = estimate_const_phase(x1[est_start:est_start+est_n],
+                                 x2a[est_start:est_start+est_n])
 
     cal = {
         "lag_samples": int(lag),
-        "cfo_hz": float(cfo),
+        "cfo_hz": float(cfo),  # always 0.0 for shared-clock systems
         "phase_rad": float(theta),
         "fc_hz": float(fc_hz),
         "fs_hz": float(fs_hz),
@@ -126,8 +135,6 @@ def apply_calibration(x1_raw, x2_raw, cal, fs_hz):
     n = min(len(x1), len(x2))
     x1, x2 = x1[:n], x2[:n]
 
-    if cal["cfo_hz"] != 0:
-        x2 = correct_cfo(x2, cal["cfo_hz"], fs_hz)
     x2 = correct_const_phase(x2, cal["phase_rad"])
 
     return x1, x2

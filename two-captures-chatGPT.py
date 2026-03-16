@@ -7,7 +7,7 @@ from rtlsdr import RtlSdr
 def capture_two_rtls(out_dir="captures/run001",
                      fc_hz=868_100_000,
                      fs_hz=2_400_000,
-                     gain_db=30.0,
+                     gain_db=30,
                      duration_s=5.0,
                      ppm=0):
 
