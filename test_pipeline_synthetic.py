@@ -15,7 +15,6 @@ from scipy.signal import fftconvolve
 from beamform_ready import (
     remove_dc, normalize_rms,
     estimate_integer_delay, apply_integer_delay,
-    estimate_cfo_hz, correct_cfo,
     estimate_const_phase, correct_const_phase,
 )
 
@@ -23,8 +22,7 @@ from beamform_ready import (
 fs_hz      = 2_400_000   # match hardware
 N          = int(2 * fs_hz)  # 2 seconds
 TRUE_LAG   = -500        # samples: x2 leads x1 by 500 (same sign convention as real data)
-TRUE_CFO   = 0.0         # Hz  (shared SI5351 clock → ~0 Hz real CFO; any nonzero value
-                         #      must satisfy CFO × T_total << 1 rad or cross-corr peak → 0)
+TRUE_CFO   = 0.0         # Hz  (shared SI5351 clock → ~0 Hz; not estimated or corrected)
 TRUE_PHASE = 0.8         # rad
 SNR_DB     = 30          # dB (generous — isolates algorithm from noise)
 
@@ -69,31 +67,23 @@ x2a = apply_integer_delay(x2n, lag)
 ns = min(len(x1n), len(x2a))
 x1n, x2a = x1n[:ns], x2a[:ns]
 
-# Step 2: CFO
-cfo = estimate_cfo_hz(x1n, x2a, fs_hz)
-x2b = correct_cfo(x2a, cfo, fs_hz)
-
-# Step 3: Constant phase
-theta = estimate_const_phase(x1n, x2b)
-x2c = correct_const_phase(x2b, theta)
+# Step 2: Constant phase
+theta = estimate_const_phase(x1n, x2a)
+x2c = correct_const_phase(x2a, theta)
 
 # ── Print results ──────────────────────────────────────────────────────────
 print("─── Truth ───────────────────────────────────")
 print(f"  lag   : {TRUE_LAG:+d} samples")
-print(f"  CFO   : {TRUE_CFO:+.2f} Hz")
 print(f"  phase : {TRUE_PHASE:+.4f} rad  ({np.degrees(TRUE_PHASE):+.2f}°)")
 print()
 print("─── Estimated ───────────────────────────────")
 print(f"  lag   : {lag:+d} samples   (error {lag - TRUE_LAG:+d})")
-print(f"  CFO   : {cfo:+.2f} Hz   (error {cfo - TRUE_CFO:+.2f} Hz)")
 print(f"  phase : {theta:+.4f} rad  ({np.degrees(theta):+.2f}°)   (error {np.degrees(theta - TRUE_PHASE):+.2f}°)")
 print()
 
 lag_ok   = abs(lag - TRUE_LAG) == 0
-cfo_ok   = abs(cfo - TRUE_CFO) < 1.0
 phase_ok = abs(np.degrees(theta - TRUE_PHASE)) < 2.0
 print(f"  lag   : {'PASS ✓' if lag_ok   else 'FAIL ✗'}")
-print(f"  CFO   : {'PASS ✓' if cfo_ok   else 'FAIL ✗'}")
 print(f"  phase : {'PASS ✓' if phase_ok else 'FAIL ✗'}")
 
 # ── Plots ──────────────────────────────────────────────────────────────────
@@ -122,7 +112,7 @@ chunk = min(len(x1n) - valid_start, len(x2c) - valid_start, 500_000)
 t_ms = np.arange(chunk) / fs_hz * 1e3
 
 phase_before = np.angle(x1n[valid_start:valid_start+chunk] * np.conj(x2a[valid_start:valid_start+chunk]))
-phase_after  = np.angle(x1n[valid_start:valid_start+chunk] * np.conj(x2c[valid_start:valid_start+chunk]))
+phase_after  = np.angle(x1n[valid_start:valid_start+chunk] * np.conj(x2c[valid_start:valid_start+chunk]))  # after phase correction
 
 ax = axes[1]
 ax.plot(t_ms, np.degrees(phase_before), alpha=0.5, lw=0.4, label="After lag correction only")
@@ -146,7 +136,7 @@ ax.set_ylabel("Amplitude (normalized)")
 ax.legend()
 
 fig.suptitle(
-    f"SYNTHETIC TEST  —  SNR={SNR_DB} dB | lag={TRUE_LAG} | CFO={TRUE_CFO} Hz | phase={np.degrees(TRUE_PHASE):.1f}°",
+    f"SYNTHETIC TEST  —  SNR={SNR_DB} dB | lag={TRUE_LAG} | phase={np.degrees(TRUE_PHASE):.1f}°",
     fontsize=12
 )
 fig.tight_layout()

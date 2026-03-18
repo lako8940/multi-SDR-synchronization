@@ -11,7 +11,8 @@ from scipy.signal import fftconvolve
 
 from beamform_ready import (
     load_c64, remove_dc, normalize_rms,
-    apply_integer_delay, correct_cfo, correct_const_phase,
+    find_USB_delay,
+    apply_integer_delay, correct_const_phase,
     calibrate_and_save, load_calibration, apply_calibration,
 )
 
@@ -38,12 +39,16 @@ n_pre = min(len(x1_raw), len(x2_raw))
 x1_pre = normalize_rms(remove_dc(x1_raw[:n_pre]))
 x2_pre = normalize_rms(remove_dc(x2_raw[:n_pre]))
 
+# ── USB jitter delay ──────────────────────────────────────────────
+usb_lag = find_USB_delay(x1_raw, x2_raw)
+print(f"\n── USB Delay Estimation ────────────────────")
+print(f"USB jitter offset : {usb_lag:+d} samples  ({usb_lag / fs_hz * 1e6:+.2f} us)")
+
 # ── Run calibration and save to JSON ─────────────────────────────
 cal_path = capture_dir / "cal.json"
 cal = calibrate_and_save(x1_raw, x2_raw, fs_hz, fc_hz, cal_path, capture_dir)
 print("\n── Calibration Results ─────────────────────")
 print(f"Integer delay : {cal['lag_samples']:+d} samples  ({cal['lag_samples']/fs_hz*1e6:+.2f} us)")
-print(f"CFO           : {cal['cfo_hz']:+.4f} Hz")
 print(f"Phase offset  : {cal['phase_rad']:+.4f} rad  ({np.degrees(cal['phase_rad']):+.2f} deg)")
 
 # ── Step-by-step coherence diagnostics ───────────────────────────
@@ -66,32 +71,29 @@ b1 = apply_integer_delay(b, cal["lag_samples"])
 ns = min(len(a), len(b1))
 a, b1 = a[:ns], b1[:ns]
 
-b2 = correct_cfo(b1, cal["cfo_hz"], fs_hz)
-b3 = correct_const_phase(b2, cal["phase_rad"])
+b2 = correct_const_phase(b1, cal["phase_rad"])
 
 v = slice(valid_start, valid_start + min(500_000, ns - valid_start))
 
 c0, p0 = coherence(a[v], b[v])
 c1, p1 = coherence(a[v], b1[v])
 c2, p2 = coherence(a[v], b2[v])
-c3, p3 = coherence(a[v], b3[v])
 
 print("\n── Step-by-step coherence (valid region) ────")
 print(f"  Raw (no correction)   : {c0:.4f}  mean phase = {p0:+.1f}°")
 print(f"  After integer delay   : {c1:.4f}  mean phase = {p1:+.1f}°")
-print(f"  After CFO correction  : {c2:.4f}  mean phase = {p2:+.1f}°")
-print(f"  After phase correction: {c3:.4f}  mean phase = {p3:+.1f}°  ← should be ~1.0 / ~0°")
+print(f"  After phase correction: {c2:.4f}  mean phase = {p2:+.1f}°  ← should be ~1.0 / ~0°")
 print()
-if c3 > 0.9:
+if c2 > 0.9:
     print("  RESULT: PASS — corrections are working correctly")
-elif c3 > 0.5:
+elif c2 > 0.5:
     print("  RESULT: PARTIAL — some alignment but phase is not fully corrected")
 else:
     print("  RESULT: FAIL — coherence too low; check SNR or re-capture with HackRF transmitting")
 
 # ── Load calibration back and apply for plotting ──────────────────
 cal = load_calibration(cal_path)
-x1, x2 = apply_calibration(x1_raw, x2_raw, cal, fs_hz)
+x1, x2 = apply_calibration(x1_raw, x2_raw, cal)
 
 # ── Verification plots ────────────────────────────────────────────
 fig, axes = plt.subplots(4, 1, figsize=(12, 13))
@@ -149,7 +151,7 @@ ax.plot(t_ms, np.degrees(phase_after_smooth), lw=1.2, color="tab:red", label=f"A
 ax.axhline(0, color="k", ls="--", lw=0.8, label="Target: 0°")
 ax.set_xlabel("Time (ms)")
 ax.set_ylabel("Phase difference (deg)")
-ax.set_title(f"Instantaneous Phase Difference  —  coherence after correction: {c3:.3f}  (mean: {p3:+.1f}°)")
+ax.set_title(f"Instantaneous Phase Difference  —  coherence after correction: {c2:.3f}  (mean: {p2:+.1f}°)")
 ax.legend(fontsize=8)
 
 # Panel 4: Cross-correlation AFTER integer delay correction (proof peak moved to 0)
