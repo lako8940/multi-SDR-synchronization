@@ -2,6 +2,7 @@ import json
 import time
 import threading
 from datetime import datetime, timezone
+from pathlib import Path
 
 import numpy as np
 from scipy.signal import fftconvolve
@@ -103,6 +104,7 @@ def calibrate_and_save(x1_raw, x2_raw, fs_hz, fc_hz, cal_path):
         "fs_hz": float(fs_hz),
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
+    Path(cal_path).parent.mkdir(parents=True, exist_ok=True)
     with open(cal_path, "w") as f:
         json.dump(cal, f, indent=2)
 
